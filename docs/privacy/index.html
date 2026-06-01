@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>lacuna — privacy policy</title>
+<style>
+  :root {
+    --bg: #F7F3EE;
+    --fg: #0C0E11;
+    --surface: #F1ECE5;
+    --border: rgba(12, 14, 17, 0.12);
+    --dim: rgba(12, 14, 17, 0.55);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #000000;
+      --fg: #F7F3EE;
+      --surface: #0E0E0E;
+      --border: rgba(247, 243, 238, 0.14);
+      --dim: rgba(247, 243, 238, 0.55);
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--fg);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    font-family: Charter, Georgia, "New York", "Times New Roman", serif;
+    font-size: 17px;
+    line-height: 1.62;
+    padding: 64px 24px 96px;
+  }
+
+  .wrap { max-width: 640px; margin: 0 auto; }
+
+  .brand {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0.28em;
+    text-transform: lowercase;
+    color: var(--dim);
+    margin: 0 0 8px;
+  }
+
+  h1 {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    font-size: 26px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: lowercase;
+    margin: 0 0 36px;
+  }
+
+  h2 {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: lowercase;
+    margin: 44px 0 10px;
+  }
+
+  p { margin: 0 0 16px; }
+  p:last-child { margin-bottom: 0; }
+
+  a { color: var(--fg); text-decoration: underline; text-underline-offset: 2px; }
+
+  .summary {
+    border: 1px solid var(--border);
+    background: var(--surface);
+    padding: 22px 24px;
+    margin: 0 0 8px;
+    font-size: 18px;
+    line-height: 1.6;
+  }
+
+  .controller { white-space: pre-line; color: var(--dim); }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 12px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    font-size: 14px;
+  }
+  td {
+    padding: 13px 0;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  td.q { color: var(--dim); padding-right: 20px; }
+  td.a { text-align: right; font-weight: 500; }
+  tr:last-child td { border-bottom: none; }
+
+  .table-card {
+    border: 1px solid var(--border);
+    background: var(--surface);
+    padding: 6px 24px;
+    margin-top: 16px;
+  }
+
+  footer {
+    margin-top: 56px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    font-size: 13px;
+    color: var(--dim);
+    line-height: 1.7;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <p class="brand">lacuna</p>
+  <h1>privacy policy</h1>
+
+  <div class="summary">
+    lacuna stores your capsules on your device. we operate no servers of our own, collect nothing about you, and never see your content. anything sent via imessage is end-to-end encrypted — neither apple nor we can read it.
+  </div>
+
+  <h2>data controller</h2>
+  <p class="controller">antonio baltic
+austria
+<a href="mailto:antoniobaltic@icloud.com">antoniobaltic@icloud.com</a></p>
+
+  <h2>where your data lives</h2>
+  <p>all capsule data — text, photos, voice recordings, titles, dates — is stored on your device using apple's swiftdata framework.</p>
+  <p>if icloud is enabled in your ios settings, your capsules sync automatically across your apple devices through apple's cloudkit private database. this data lives in your personal icloud, not on any server we operate or can access. apple encrypts it in transit and at rest.</p>
+  <p>your preferences (appearance mode, your name as sender, onboarding status) are stored locally and are not synced.</p>
+  <p>we do not operate any servers ourselves. for everything we use apple's infrastructure for — sync, imessage transit — see the sections below.</p>
+
+  <h2>shared capsules</h2>
+  <p>when you send a capsule, you can share it via imessage (with a rich preview card) or via any other app (airdrop, whatsapp, email).</p>
+  <p>for imessage with text capsules, the entire content is packaged into the message itself. no data passes through any server we operate.</p>
+  <p>for imessage with photos or voice notes, the content is encrypted on your device with a one-time key and uploaded to apple's icloud public database so the recipient can fetch it. the decryption key travels only inside the imessage and never reaches apple's servers — your media is end-to-end encrypted. records auto-expire and are cleaned up after 30 days.</p>
+  <p>for sharing via other apps, your capsule is packaged into a local .capsule file and handed to the ios share sheet. no data passes through any server we operate; the transfer is peer-to-peer through whichever app you pick.</p>
+
+  <h2>in-app purchases</h2>
+  <p>lacuna + is processed by apple through the app store. purchase validation is handled by revenuecat, a third-party service that receives only a randomly generated anonymous id and transaction data. revenuecat does not receive your name, apple id, email, or payment details.</p>
+  <p>we receive only aggregate, anonymized sales data. we do not receive any information that could identify individual users.</p>
+
+  <h2>notifications</h2>
+  <p>the app uses apple's local notification system to alert you when a capsule is ready. notifications are scheduled locally on your device, not routed through any external server, and not used for marketing.</p>
+
+  <h2>what we do not collect</h2>
+  <p>we do not collect: personal identification information, location data, device identifiers, usage analytics, crash reports, advertising identifiers, cookies, tracking technologies, health data, financial data, or biometric data.</p>
+  <p>the app contains no analytics sdks, no advertising frameworks, and no social media tracking. the only third-party service is revenuecat for anonymous purchase validation (see above).</p>
+
+  <h2>your rights (gdpr / dsgvo)</h2>
+  <p>under the general data protection regulation and the austrian datenschutzgesetz, you have the right to access, rectify, erase, port, and restrict processing of your data.</p>
+  <p>since your capsules live on your device, these rights are automatically fulfilled — you can view, delete, or export your data at any time within the app. delete the app to remove everything from the device.</p>
+  <p>for media capsules sent via imessage, the encrypted blob (ciphertext only, no identifying information) sits in apple's icloud for up to 30 days while in transit, then is automatically removed. canceling an imessage send before it goes through removes the blob immediately.</p>
+  <p>the responsible authority is the österreichische datenschutzbehörde, barichgasse 40-42, 1030 wien. <a href="https://dsb.gv.at">dsb.gv.at</a></p>
+
+  <h2>data security</h2>
+  <p>on your device, your data is protected by ios's built-in encryption, app sandboxing, and biometric / passcode lock.</p>
+  <p>for media capsules sent via imessage, we add a second encryption layer: aes-gcm with a fresh 256-bit key generated for every capsule. the key is included only inside the imessage itself and never sent to any server. apple sees only ciphertext.</p>
+
+  <h2>children</h2>
+  <p>the app does not knowingly collect any data from children under 16. since the app collects no personal data from any user, no special measures are required.</p>
+
+  <h2>changes</h2>
+  <p>this policy may be updated. changes will be reflected by the date below and noted in app store release notes.</p>
+
+  <div class="table-card">
+    <table>
+      <tr><td class="q">collect your data?</td><td class="a">no</td></tr>
+      <tr><td class="q">run our own servers?</td><td class="a">no</td></tr>
+      <tr><td class="q">use apple's icloud?</td><td class="a">yes — for sync + encrypted imessage transit</td></tr>
+      <tr><td class="q">see your capsules?</td><td class="a">no</td></tr>
+      <tr><td class="q">use analytics?</td><td class="a">no</td></tr>
+      <tr><td class="q">track you?</td><td class="a">no</td></tr>
+      <tr><td class="q">share with third parties?</td><td class="a">anonymous purchase data only (revenuecat)</td></tr>
+      <tr><td class="q">where is data stored?</td><td class="a">your device + your icloud</td></tr>
+      <tr><td class="q">how to delete?</td><td class="a">delete the app</td></tr>
+    </table>
+  </div>
+
+  <footer>
+    last updated: may 13, 2026<br>
+    governed by the laws of austria and the european union.<br>
+    <a href="mailto:antoniobaltic@icloud.com">antoniobaltic@icloud.com</a>
+  </footer>
+
+</div>
+</body>
+</html>
