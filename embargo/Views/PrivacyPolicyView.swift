@@ -36,7 +36,7 @@ struct PrivacyPolicyView: View {
                 VStack(spacing: 28) {
                     // Summary box
                     VStack(spacing: 12) {
-                        Text("lacuna stores everything locally on your device. we don't collect, transmit, or have access to any of your data.")
+                        Text("lacuna stores your capsules on your device. we operate no servers of our own, collect nothing about you, and never see your content. anything sent via imessage is end-to-end encrypted — neither apple nor we can read it.")
                             .font(.subheadline)
                             .tracking(Design.trackingTight)
                             .lineSpacing(4)
@@ -57,21 +57,25 @@ struct PrivacyPolicyView: View {
 
                     policySection("where your data lives") {
                         """
-                        all capsule data (text, photos, voice recordings, titles, dates) is stored on your device using apple's swiftdata framework.
+                        all capsule data — text, photos, voice recordings, titles, dates — is stored on your device using apple's swiftdata framework.
 
-                        if icloud is enabled, your capsules sync automatically across your apple devices using apple's cloudkit. this data goes to your personal icloud storage — not to any server we operate. apple encrypts it in transit and at rest.
+                        if icloud is enabled in your ios settings, your capsules sync automatically across your apple devices through apple's cloudkit private database. this data lives in your personal icloud, not on any server we operate or can access. apple encrypts it in transit and at rest.
 
-                        your preferences (appearance mode, sender name, onboarding status) are stored locally and are not synced.
+                        your preferences (appearance mode, your name as sender, onboarding status) are stored locally and are not synced.
 
-                        we have no servers, no accounts, and no way to access your content.
+                        we do not operate any servers ourselves. for everything we use apple's infrastructure for — sync, imessage transit — see the sections below.
                         """
                     }
 
                     policySection("shared capsules") {
                         """
-                        when you send a capsule to someone, the app packages it into a .capsule file and opens the ios share sheet. you choose how to share it (airdrop, imessage, email, etc.).
+                        when you send a capsule, you can share it via imessage (with a rich preview card) or via any other app (airdrop, whatsapp, email).
 
-                        the file is created locally. sharing happens through apple's standard mechanisms. no data passes through any server we operate. the transfer is entirely peer-to-peer.
+                        for imessage with text capsules, the entire content is packaged into the message itself. no data passes through any server we operate.
+
+                        for imessage with photos or voice notes, the content is encrypted on your device with a one-time key and uploaded to apple's icloud public database so the recipient can fetch it. the decryption key travels only inside the imessage and never reaches apple's servers — your media is end-to-end encrypted. records auto-expire and are cleaned up after 30 days.
+
+                        for sharing via other apps, your capsule is packaged into a local .capsule file and handed to the ios share sheet. no data passes through any server we operate; the transfer is peer-to-peer through whichever app you pick.
                         """
                     }
 
@@ -101,9 +105,9 @@ struct PrivacyPolicyView: View {
                         """
                         under the general data protection regulation and the austrian datenschutzgesetz, you have the right to access, rectify, erase, port, and restrict processing of your data.
 
-                        since all data is stored locally on your device, these rights are automatically fulfilled — you can view, delete, or export your data at any time within the app.
+                        since your capsules live on your device, these rights are automatically fulfilled — you can view, delete, or export your data at any time within the app. delete the app to remove everything from the device.
 
-                        to delete all data permanently, delete the app from your device.
+                        for media capsules sent via imessage, the encrypted blob (ciphertext only, no identifying information) sits in apple's icloud for up to 30 days while in transit, then is automatically removed. canceling an imessage send before it goes through removes the blob immediately.
 
                         the responsible authority is the österreichische datenschutzbehörde, barichgasse 40-42, 1030 wien. dsb.gv.at
                         """
@@ -111,7 +115,9 @@ struct PrivacyPolicyView: View {
 
                     policySection("data security") {
                         """
-                        your data is protected by your device's built-in encryption, app sandboxing, and biometric/passcode lock. no additional encryption is implemented because ios device encryption already protects all locally stored data.
+                        on your device, your data is protected by ios's built-in encryption, app sandboxing, and biometric / passcode lock.
+
+                        for media capsules sent via imessage, we add a second encryption layer: AES-GCM with a fresh 256-bit key generated for every capsule. the key is included only inside the imessage itself and never sent to any server. apple sees only ciphertext.
                         """
                     }
 
@@ -131,7 +137,9 @@ struct PrivacyPolicyView: View {
                     VStack(spacing: 12) {
                         summaryRow("collect your data?", answer: "no")
                         Divider().overlay(Design.divider)
-                        summaryRow("have servers?", answer: "no")
+                        summaryRow("run our own servers?", answer: "no")
+                        Divider().overlay(Design.divider)
+                        summaryRow("use apple's icloud?", answer: "yes — for sync + encrypted imessage transit")
                         Divider().overlay(Design.divider)
                         summaryRow("see your capsules?", answer: "no")
                         Divider().overlay(Design.divider)
@@ -139,9 +147,9 @@ struct PrivacyPolicyView: View {
                         Divider().overlay(Design.divider)
                         summaryRow("track you?", answer: "no")
                         Divider().overlay(Design.divider)
-                        summaryRow("share with third parties?", answer: "anonymous purchase data only")
+                        summaryRow("share with third parties?", answer: "anonymous purchase data only (revenuecat)")
                         Divider().overlay(Design.divider)
-                        summaryRow("where is data stored?", answer: "device + your icloud")
+                        summaryRow("where is data stored?", answer: "your device + your icloud")
                         Divider().overlay(Design.divider)
                         summaryRow("how to delete?", answer: "delete the app")
                     }
@@ -155,7 +163,7 @@ struct PrivacyPolicyView: View {
 
                     // Footer
                     VStack(spacing: 6) {
-                        Text("last updated: april 4, 2026")
+                        Text("last updated: may 13, 2026")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .tracking(Design.trackingTight)

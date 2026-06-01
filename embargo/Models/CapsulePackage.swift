@@ -1,6 +1,6 @@
 import Foundation
 
-struct CapsulePackage: Codable {
+nonisolated struct CapsulePackage: Codable, Sendable {
     let version: Int
     let type: String
     let title: String

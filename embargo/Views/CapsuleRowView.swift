@@ -79,6 +79,9 @@ struct CapsuleRowView: View {
 // MARK: - Ready pulse text
 
 private struct ReadyPulseText: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var breathing = false
+
     var body: some View {
         Text("ready")
             .font(.caption2.weight(.medium))
@@ -88,6 +91,16 @@ private struct ReadyPulseText: View {
             .padding(.vertical, 2)
             .background(Color.primary)
             .clipShape(.rect(cornerRadius: Design.radiusSmall))
+            // Live up to the component's name: a subtle breathing scale + dim
+            // so ready capsules visibly call attention in the list.
+            .scaleEffect(breathing ? 1.04 : 1.0)
+            .opacity(breathing ? 0.85 : 1.0)
+            .onAppear {
+                guard !reduceMotion else { return }
+                withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
+                    breathing = true
+                }
+            }
     }
 }
 

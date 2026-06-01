@@ -7,6 +7,7 @@ struct SealedCapsuleHeader: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var breathing = false
     @State private var openHaptic = false
+    @State private var hintBreathing = false
 
     private var headerSubtitle: String? {
         let hasTitle = !capsule.title.isEmpty
@@ -40,18 +41,20 @@ struct SealedCapsuleHeader: View {
     var body: some View {
         VStack(spacing: 20) {
             ZStack {
-                // Outer pulse ring
+                // Outer pulse ring — keeps pulsing visibly when ready (was
+                // previously faded to opacity 0, which made the most exciting
+                // moment look static). Now it breathes like a halo.
                 Circle()
-                    .stroke(Color.primary.opacity(isReady ? 0.25 : 0.18), lineWidth: 1)
+                    .stroke(Color.primary.opacity(isReady ? 0.30 : 0.18), lineWidth: 1)
                     .frame(width: 110, height: 110)
-                    .scaleEffect(breathing ? (isReady ? 1.15 : 1.05) : 1.0)
-                    .opacity(breathing && isReady ? 0.0 : 1.0)
+                    .scaleEffect(breathing ? (isReady ? 1.18 : 1.05) : 1.0)
+                    .opacity(breathing && isReady ? 0.15 : 1.0)
 
                 // Single circle — animates between stroke and fill
                 Circle()
                     .fill(isReady ? Design.fg : .clear)
                     .frame(width: 90, height: 90)
-                    .scaleEffect(breathing ? (isReady ? 1.03 : 1.0) : 1.0)
+                    .scaleEffect(breathing ? (isReady ? 1.04 : 1.0) : 1.0)
                     .overlay {
                         Circle()
                             .stroke(Color.primary.opacity(isReady ? 0 : 0.18), lineWidth: 1)
@@ -89,7 +92,27 @@ struct SealedCapsuleHeader: View {
                         .tracking(Design.trackingNormal)
                 }
             }
+
+            // "tap to open" — a breathing hint that the lock icon above is
+            // interactive. Visible only when the capsule is ready. The breathing
+            // matches the rhythm of the halo above so they feel like one gesture.
+            if isReady {
+                Text("tap to open")
+                    .font(.caption)
+                    .tracking(Design.trackingWide)
+                    .foregroundStyle(.primary.opacity(hintBreathing ? 0.35 : 0.65))
+                    .padding(.top, 4)
+                    .accessibilityHidden(true)
+                    .onAppear {
+                        guard !reduceMotion else { return }
+                        withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) {
+                            hintBreathing = true
+                        }
+                    }
+                    .transition(.opacity)
+            }
         }
         .padding(.top, 32)
+        .animation(.easeInOut(duration: 0.35), value: isReady)
     }
 }

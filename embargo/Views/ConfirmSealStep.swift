@@ -16,6 +16,19 @@ struct ConfirmSealStep: View {
     @State private var cancelTrigger = false
     @State private var sendTrigger = false
 
+    private enum Field: Hashable { case title, senderName }
+    @FocusState private var focusedField: Field?
+
+    private func submitSenderName() {
+        let name = senderNameInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+        sendTrigger.toggle()
+        savedSenderName = name
+        focusedField = nil
+        showSendNameInput = false
+        onSend(name)
+    }
+
     var body: some View {
         VStack(spacing: 28) {
             Spacer()
@@ -28,6 +41,9 @@ struct ConfirmSealStep: View {
                 TextField("title (optional)", text: $title)
                     .font(.body)
                     .tracking(Design.trackingNormal)
+                    .focused($focusedField, equals: .title)
+                    .submitLabel(.done)
+                    .onSubmit { focusedField = nil }
                     .padding(16)
                     .background(Design.surface)
                     .clipShape(.rect(cornerRadius: Design.radiusMedium))
@@ -63,26 +79,47 @@ struct ConfirmSealStep: View {
 
             // Seal + Send buttons
             HStack(spacing: 40) {
-                SealButtonView(action: onSeal)
+                SealButtonView(action: {
+                    focusedField = nil
+                    onSeal()
+                })
 
-                SendButtonView {
+                SendButtonView(action: {
+                    focusedField = nil
                     if canSend {
                         senderNameInput = savedSenderName
                         showSendNameInput = true
                     } else {
                         onSendPaywall()
                     }
-                }
+                }, isLocked: !canSend)
             }
             .padding(.horizontal, 24)
             .padding(.bottom, 20)
             .opacity(appeared ? 1 : 0)
             .offset(y: appeared ? 0 : 20)
         }
-        .scrollDismissesKeyboard(.interactively)
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("done") { focusedField = nil }
+                    .font(.body.weight(.medium))
+                    .tracking(Design.trackingNormal)
+            }
+        }
         .onAppear {
             withAnimation(.easeOut(duration: 0.5).delay(0.3)) {
                 appeared = true
+            }
+        }
+        .onChange(of: showSendNameInput) { _, showing in
+            if showing {
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(350))
+                    focusedField = .senderName
+                }
+            } else {
+                focusedField = nil
             }
         }
         .overlay {
@@ -90,7 +127,10 @@ struct ConfirmSealStep: View {
                 // Dimmed backdrop
                 Color.black.opacity(0.3)
                     .ignoresSafeArea()
-                    .onTapGesture { showSendNameInput = false }
+                    .onTapGesture {
+                        focusedField = nil
+                        showSendNameInput = false
+                    }
 
                 // Custom name prompt
                 VStack(spacing: 24) {
@@ -109,6 +149,9 @@ struct ConfirmSealStep: View {
                     TextField("enter your name", text: $senderNameInput)
                         .font(.body)
                         .tracking(Design.trackingNormal)
+                        .focused($focusedField, equals: .senderName)
+                        .submitLabel(.go)
+                        .onSubmit { submitSenderName() }
                         .padding(14)
                         .background(Design.surface)
                         .clipShape(.rect(cornerRadius: Design.radiusMedium))
@@ -120,6 +163,7 @@ struct ConfirmSealStep: View {
                     HStack(spacing: 12) {
                         Button {
                             cancelTrigger.toggle()
+                            focusedField = nil
                             showSendNameInput = false
                         } label: {
                             Text("cancel")
@@ -138,12 +182,7 @@ struct ConfirmSealStep: View {
                         .sensoryFeedback(.impact(weight: .light), trigger: cancelTrigger)
 
                         Button {
-                            sendTrigger.toggle()
-                            let name = senderNameInput.trimmingCharacters(in: .whitespacesAndNewlines)
-                            guard !name.isEmpty else { return }
-                            savedSenderName = name
-                            showSendNameInput = false
-                            onSend(name)
+                            submitSenderName()
                         } label: {
                             Text("send")
                                 .font(.subheadline.weight(.medium))

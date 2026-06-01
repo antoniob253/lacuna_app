@@ -45,7 +45,6 @@ struct ContentInputStep: View {
 
             Spacer()
         }
-        .scrollDismissesKeyboard(.interactively)
         .onAppear {
             withAnimation(.easeOut(duration: 0.4).delay(0.1)) { appeared = true }
         }

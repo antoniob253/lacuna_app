@@ -42,7 +42,7 @@ struct SealedCapsuleView: View {
                                         .font(.system(size: 20, weight: .medium))
                                         .foregroundStyle(.primary)
                                         .accessibilityHidden(true)
-                                    Text(capsule.isSent ? "you and your loved one must wait" : "you must wait")
+                                    Text(capsule.isSent ? "you both must wait" : "you must wait")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                         .tracking(Design.trackingNormal)

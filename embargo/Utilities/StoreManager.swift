@@ -9,6 +9,15 @@ final class StoreManager: NSObject, PurchasesDelegate {
     static let entitlementID = "Lacuna +"
     static let apiKey = "appl_DsUPCPuPNrVvkfBsNfXYGNblWAr"
 
+    /// DEBUG-only override so the developer can exercise Pro-gated flows
+    /// (send, camera, unlimited capsules) without paying themselves.
+    /// This constant is wrapped in `#if DEBUG` so it physically does not
+    /// exist in TestFlight or App Store builds — there is no risk of
+    /// shipping a Pro bypass to real users.
+    #if DEBUG
+    private static let debugProOverride = true
+    #endif
+
     var isPro = false
     var proProduct: StoreProduct?
     var purchaseInProgress = false
@@ -16,6 +25,9 @@ final class StoreManager: NSObject, PurchasesDelegate {
 
     private override init() {
         super.init()
+        #if DEBUG
+        if Self.debugProOverride { isPro = true }
+        #endif
     }
 
     // MARK: - Configuration (call once at app launch)
@@ -123,6 +135,11 @@ final class StoreManager: NSObject, PurchasesDelegate {
     // MARK: - Private
 
     private func updateProStatus(from customerInfo: CustomerInfo) {
-        isPro = customerInfo.entitlements[Self.entitlementID]?.isActive == true
+        let real = customerInfo.entitlements[Self.entitlementID]?.isActive == true
+        #if DEBUG
+        isPro = real || Self.debugProOverride
+        #else
+        isPro = real
+        #endif
     }
 }

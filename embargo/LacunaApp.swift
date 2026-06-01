@@ -59,9 +59,15 @@ struct LacunaApp: App {
                     await storeManager.loadProducts()
                     await storeManager.checkEntitlement()
                     storeManager.listenForTransactions()
+
+                    // Best-effort: clean up our own expired transport records in the
+                    // CloudKit public DB. Runs detached so launch isn't blocked.
+                    Task.detached(priority: .background) {
+                        await CapsuleTransport.sweepExpiredRecords()
+                    }
                 }
                 .onOpenURL { url in
-                    handleIncomingFile(url: url)
+                    handleIncomingURL(url)
                 }
                 .onReceive(NotificationCenter.default.publisher(for: UIScene.didActivateNotification)) { notification in
                     guard let scene = notification.object as? UIWindowScene else { return }
@@ -82,23 +88,109 @@ struct LacunaApp: App {
         .modelContainer(container)
     }
 
-    private func handleIncomingFile(url: URL) {
+    private func handleIncomingURL(_ url: URL) {
+        // Four entry points all funnel through here:
+        //   1. .capsule file opened from another app (Files, AirDrop, WhatsApp share, etc.)
+        //   2. lacuna://import?id=<uuid> — handed off from the iMessage extension via App Group
+        //   3. lacuna://import?d=<base64> — extension fallback when App Group write failed
+        //   4. lacuna://capsule?d=<base64> — direct capsule URL tapped (rare; safety net)
         let context = container.mainContext
-        if let capsule = CapsuleImporter.importCapsule(from: url, modelContext: context) {
-            let senderName = capsule.senderName ?? "someone"
-            let notification = InAppNotification(
-                capsuleID: capsule.id.uuidString,
-                customTitle: "time capsule received from \(senderName)"
-            )
-            withAnimation(Design.springSnappy) {
-                notificationManager.inAppNotification = notification
-            }
 
+        if url.scheme == "lacuna" {
+            handleLacunaURL(url, context: context)
+            return
+        }
+
+        applyImportResult(CapsuleImporter.importCapsule(from: url, modelContext: context))
+    }
+
+    private func handleLacunaURL(_ url: URL, context: ModelContext) {
+        guard let comps = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return }
+        let host = (url.host ?? "").lowercased()
+
+        // lacuna://open — extension's "go to app" link with no payload
+        if host == "open" { return }
+
+        guard host == "import" || host == "capsule" else { return }
+
+        let items = comps.queryItems ?? []
+
+        // Path A: payload staged in App Group by the extension
+        if let id = items.first(where: { $0.name == "id" })?.value,
+           let data = MessagesAppGroup.consumeIncoming(id: id) {
+            applyImportResult(CapsuleImporter.importCapsule(from: data, modelContext: context))
+            // Sweep stale staged payloads opportunistically
+            MessagesAppGroup.purgeOlderThan(7 * 24 * 60 * 60)
+            return
+        }
+
+        // Path B: payload encoded directly into the URL (extension fallback / direct tap)
+        if let raw = items.first(where: { $0.name == "d" })?.value {
+            let normalized = raw
+                .replacingOccurrences(of: "-", with: "+")
+                .replacingOccurrences(of: "_", with: "/")
+            var padded = normalized
+            while padded.count % 4 != 0 { padded += "=" }
+            if let data = Data(base64Encoded: padded) {
+                applyImportResult(CapsuleImporter.importCapsule(from: data, modelContext: context))
+            }
+        }
+    }
+
+    private func applyImportResult(_ result: CapsuleImporter.ImportResult) {
+        switch result {
+        case .imported(let capsule):
+            let senderName = capsule.senderName ?? "someone"
+            announceImport(
+                capsule: capsule,
+                title: "time capsule received from \(senderName)",
+                navigate: true
+            )
             // Trigger 4: After importing a received capsule
             Task { @MainActor in
                 try? await Task.sleep(for: .seconds(3))
                 RatingManager.requestIfEligible()
             }
+
+        case .alreadyExists(let capsule):
+            // Toast but don't yank the user into a deep view — they already
+            // imported this once, no need to interrupt whatever they were doing.
+            let senderName = capsule.senderName ?? "someone"
+            announceImport(
+                capsule: capsule,
+                title: "you already have this capsule from \(senderName)",
+                navigate: false
+            )
+
+        case .malformed:
+            // Show a brief toast so the user doesn't think nothing happened.
+            // No capsule ID to navigate to.
+            withAnimation(Design.springSnappy) {
+                notificationManager.inAppNotification = InAppNotification(
+                    capsuleID: "",
+                    customTitle: "couldn't open this capsule"
+                )
+            }
+        }
+    }
+
+    /// Show the receive toast and optionally navigate to the capsule. Navigation
+    /// uses the existing `pendingCapsuleID` channel so HomeView's nav handler
+    /// does the routing — works even if the user is currently in onboarding,
+    /// settings, etc.
+    private func announceImport(capsule: Capsule, title: String, navigate: Bool) {
+        let notification = InAppNotification(
+            capsuleID: capsule.id.uuidString,
+            customTitle: title
+        )
+        withAnimation(Design.springSnappy) {
+            notificationManager.inAppNotification = notification
+        }
+        guard navigate else { return }
+        // Brief delay so the toast lands first, then navigate
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(400))
+            notificationManager.pendingCapsuleID = capsule.id.uuidString
         }
     }
 

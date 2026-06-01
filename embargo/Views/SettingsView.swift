@@ -16,6 +16,7 @@ struct SettingsView: View {
     @State private var showPaywall = false
     @State private var cameraDenied = false
     @State private var micDenied = false
+    @State private var feedbackFallbackShown = false
 
     private var selectedMode: AppearanceMode {
         AppearanceMode(rawValue: appearanceMode) ?? .automatic
@@ -377,6 +378,29 @@ struct SettingsView: View {
                                 .contentShape(.rect)
                             }
                             .buttonStyle(.plain)
+
+                            Divider()
+                                .overlay(Design.divider)
+                                .padding(.leading, 20)
+
+                            Button {
+                                openFeedback()
+                            } label: {
+                                HStack {
+                                    Text("send feedback")
+                                        .font(.body)
+                                        .tracking(Design.trackingNormal)
+                                    Spacer()
+                                    Image(systemName: "arrow.up.right")
+                                        .font(.caption2.weight(.light))
+                                        .foregroundStyle(.secondary)
+                                }
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 14)
+                                .contentShape(.rect)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityHint("opens your mail app to write to the developer")
                         }
                         .background(Design.surface)
                         .clipShape(.rect(cornerRadius: Design.radiusMedium))
@@ -406,6 +430,11 @@ struct SettingsView: View {
             }
             .sheet(isPresented: $showPaywall) {
                 PaywallView(storeManager: storeManager, reason: .generic)
+            }
+            .alert("no mail app", isPresented: $feedbackFallbackShown) {
+                Button("ok", role: .cancel) {}
+            } message: {
+                Text("we couldn't open mail on this device. the address antoniobaltic@icloud.com has been copied to your clipboard.")
             }
         }
         .onAppear {
@@ -484,6 +513,23 @@ struct SettingsView: View {
     private func checkPermissionStatuses() {
         cameraDenied = AVCaptureDevice.authorizationStatus(for: .video) == .denied
         micDenied = AVAudioApplication.shared.recordPermission == .denied
+    }
+
+    private func openFeedback() {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
+        let subject = "lacuna feedback (v\(version) · build \(build))"
+        let encoded = subject.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "lacuna%20feedback"
+        guard let url = URL(string: "mailto:antoniobaltic@icloud.com?subject=\(encoded)") else { return }
+
+        // If a mail client is set up, open it. Otherwise copy the address to
+        // the clipboard and let the user know — never a dead tap.
+        if UIApplication.shared.canOpenURL(url) {
+            UIApplication.shared.open(url)
+        } else {
+            UIPasteboard.general.string = "antoniobaltic@icloud.com"
+            feedbackFallbackShown = true
+        }
     }
 }
 

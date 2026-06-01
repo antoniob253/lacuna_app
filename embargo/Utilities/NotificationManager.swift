@@ -55,6 +55,12 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     }
 
     static func scheduleCapsuleNotification(id: String, title: String, unlockDate: Date) {
+        // Don't schedule for past-due unlocks — the in-app toast already announces
+        // those (and a delayed system notif would otherwise replace the custom toast
+        // ~1s later with the generic "a time capsule is ready" copy).
+        let secondsUntilUnlock = unlockDate.timeIntervalSince(Date.now)
+        guard secondsUntilUnlock > 1 else { return }
+
         let content = UNMutableNotificationContent()
         content.title = "the wait is over"
         content.body = "a time capsule is ready to be opened."
@@ -63,7 +69,7 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         content.userInfo = ["capsuleID": id]
 
         let trigger = UNTimeIntervalNotificationTrigger(
-            timeInterval: max(1, unlockDate.timeIntervalSince(Date.now)),
+            timeInterval: secondsUntilUnlock,
             repeats: false
         )
 

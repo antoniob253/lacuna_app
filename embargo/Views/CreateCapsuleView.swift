@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import PhotosUI
+import MessageUI
 
 struct CreateCapsuleView: View {
     @Environment(\.modelContext) private var modelContext
@@ -28,6 +29,8 @@ struct CreateCapsuleView: View {
     @State private var paywallReason: PaywallReason?
     @State private var whisperAppeared = false
     @State private var whisperBreathing = false
+    @State private var isPreparingSend = false
+    @State private var sendErrorMessage: String?
 
     private var canProceed: Bool {
         switch step {
@@ -211,12 +214,35 @@ struct CreateCapsuleView: View {
             }
             .background(Design.bg.ignoresSafeArea())
             .overlay { FloatingParticlesView().allowsHitTesting(false).ignoresSafeArea() }
+            .overlay {
+                if isPreparingSend {
+                    PreparingSendOverlay()
+                        .transition(.opacity)
+                }
+            }
+            .animation(Design.springSnappy, value: isPreparingSend)
             .toolbar(.hidden, for: .navigationBar)
             .interactiveDismissDisabled(step != .selectType)
             .sensoryFeedback(.selection, trigger: typeTrigger)
             .sensoryFeedback(.selection, trigger: swipeBackTrigger)
             .sheet(item: $paywallReason) { reason in
                 PaywallView(storeManager: storeManager, reason: reason)
+            }
+            .alert(
+                "couldn't send",
+                isPresented: Binding(
+                    get: { sendErrorMessage != nil },
+                    set: { if !$0 { sendErrorMessage = nil } }
+                )
+            ) {
+                Button("share another way") {
+                    sendErrorMessage = nil
+                    let capsule = makeTempCapsule(senderName: pendingSenderName)
+                    presentFileShareSheet(senderName: pendingSenderName, capsule: capsule)
+                }
+                Button("cancel", role: .cancel) {}
+            } message: {
+                Text(sendErrorMessage ?? "")
             }
             .onChange(of: notificationManager.pendingCapsuleID) { _, id in
                 if id != nil {
@@ -263,14 +289,33 @@ struct CreateCapsuleView: View {
     }
 
     private func sendCapsule(senderName: String) {
+        pendingSenderName = senderName
+
+        // Build a temp capsule for routing decisions (not yet inserted into DB)
+        let tempCapsule = makeTempCapsule(senderName: senderName)
+
+        // If the device can't send messages (no iMessage/SMS), skip the prompt
+        // and go straight to the file share sheet.
+        let imessageAvailable = iMessageSender.availability() == .available
+
+        Task { @MainActor in
+            // Let the modal close before presenting the next sheet
+            try? await Task.sleep(for: .milliseconds(600))
+            if imessageAvailable {
+                presentRoutingChoice(senderName: senderName, capsule: tempCapsule)
+            } else {
+                presentFileShareSheet(senderName: senderName, capsule: tempCapsule)
+            }
+        }
+    }
+
+    private func makeTempCapsule(senderName: String) -> Capsule {
         let audioData: Data? = if let audioFileName, selectedType == .voice {
             audioManager.loadAudioData(for: audioFileName)
         } else {
             nil
         }
-
-        // Package the capsule data for export (don't insert into DB yet)
-        let tempCapsule = Capsule(
+        return Capsule(
             title: title,
             type: selectedType ?? .text,
             textContent: selectedType == .text ? textContent : nil,
@@ -279,42 +324,112 @@ struct CreateCapsuleView: View {
             unlocksAt: unlockDate,
             isSent: true
         )
+    }
 
-        guard let fileURL = CapsuleExporter.export(capsule: tempCapsule, senderName: senderName) else { return }
-        shareFileURL = fileURL
-        pendingSenderName = senderName
+    private func topPresentedVC() -> UIViewController? {
+        guard let scene = UIApplication.shared.connectedScenes.first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene,
+              let root = scene.keyWindow?.rootViewController else { return nil }
+        var top = root
+        while let presented = top.presentedViewController { top = presented }
+        return top
+    }
 
-        // Present share sheet via UIKit to avoid SwiftUI sheet conflicts
+    /// Asks the user how to send: iMessage rich card vs. share to other apps.
+    private func presentRoutingChoice(senderName: String, capsule: Capsule) {
+        guard let topVC = topPresentedVC() else { return }
+
+        let alert = UIAlertController(title: "send your time capsule", message: nil, preferredStyle: .actionSheet)
+        alert.addAction(UIAlertAction(title: "via imessage", style: .default) { _ in
+            self.presentMessagesComposer(senderName: senderName, capsule: capsule)
+        })
+        alert.addAction(UIAlertAction(title: "via other apps", style: .default) { _ in
+            self.presentFileShareSheet(senderName: senderName, capsule: capsule)
+        })
+        alert.addAction(UIAlertAction(title: "cancel", style: .cancel))
+
+        // iPad popover anchoring
+        if let pop = alert.popoverPresentationController {
+            pop.sourceView = topVC.view
+            pop.sourceRect = CGRect(x: topVC.view.bounds.midX, y: topVC.view.bounds.maxY - 40, width: 1, height: 1)
+            pop.permittedArrowDirections = []
+        }
+
+        topVC.present(alert, animated: true)
+    }
+
+    /// Presents `MFMessageComposeViewController` with an attached `MSMessage` so
+    /// the recipient sees a Lacuna-branded card that opens our iMessage extension.
+    /// For payloads that don't fit inline (photos, longer voice notes), this
+    /// uploads an encrypted blob to CloudKit first — hence the async prepare step.
+    private func presentMessagesComposer(senderName: String, capsule: Capsule) {
+        isPreparingSend = true
+
         Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(600))
-            presentShareSheet(url: fileURL)
+            let coordinator = MessagesComposerCoordinator(
+                cloudKitRecordID: nil,
+                onCompleted: { sent in
+                    if sent { self.saveSentCapsule() }
+                }
+            )
+            ConfirmRoutingHolder.shared.retain(coordinator)
+
+            do {
+                let prepared = try await iMessageSender.prepareSend(
+                    capsule: capsule,
+                    senderName: senderName,
+                    delegate: coordinator
+                )
+                // Pass the record ID through to the coordinator so it can clean
+                // up the upload if the user cancels the composer.
+                coordinator.cloudKitRecordID = prepared.cloudKitRecordID
+
+                isPreparingSend = false
+
+                guard let topVC = topPresentedVC() else {
+                    // We can't actually present the composer — likely the user
+                    // navigated away during the upload. Clean up the orphan
+                    // CloudKit record so we don't leave ciphertext sitting in
+                    // Apple's public DB for nobody.
+                    if let id = prepared.cloudKitRecordID {
+                        Task.detached { await CapsuleTransport.delete(recordID: id) }
+                    }
+                    ConfirmRoutingHolder.shared.release(coordinator)
+                    return
+                }
+                topVC.present(prepared.composer, animated: true)
+            } catch {
+                ConfirmRoutingHolder.shared.release(coordinator)
+                isPreparingSend = false
+                sendErrorMessage = (error as? LocalizedError)?.errorDescription
+                    ?? error.localizedDescription
+            }
         }
     }
 
-    private func presentShareSheet(url: URL) {
-        guard let windowScene = UIApplication.shared.connectedScenes.first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene,
-              let rootVC = windowScene.keyWindow?.rootViewController else { return }
+    /// Presents the existing file-based share sheet for non-iMessage apps.
+    private func presentFileShareSheet(senderName: String, capsule: Capsule) {
+        guard let fileURL = CapsuleExporter.export(capsule: capsule, senderName: senderName) else { return }
+        shareFileURL = fileURL
 
-        // Find the topmost presented view controller
-        var topVC = rootVC
-        while let presented = topVC.presentedViewController {
-            topVC = presented
-        }
+        guard let topVC = topPresentedVC() else { return }
 
-        let shareItem = CapsuleShareItem(fileURL: url, unlockDate: unlockDate)
+        let shareItem = CapsuleShareItem(fileURL: fileURL, unlockDate: unlockDate)
         let appStoreLink = "https://apps.apple.com/app/lacuna-time-capsule/id6761478231"
         let message = "i sealed a time capsule for you. download lacuna to open it: \(appStoreLink)"
         let activityVC = UIActivityViewController(activityItems: [message, shareItem], applicationActivities: nil)
-        // Exclude iMessage — custom file types can't be opened from iMessage
+        // iMessage is excluded here on purpose — the iMessage path is handled separately
+        // via `presentMessagesComposer` so we send a rich MSMessage card instead of a file.
         activityVC.excludedActivityTypes = [.message]
         activityVC.completionWithItemsHandler = { _, completed, _, _ in
-            // Clean up temp file
-            try? FileManager.default.removeItem(at: url)
+            try? FileManager.default.removeItem(at: fileURL)
             self.shareFileURL = nil
+            if completed { self.saveSentCapsule() }
+        }
 
-            if completed {
-                self.saveSentCapsule()
-            }
+        if let pop = activityVC.popoverPresentationController {
+            pop.sourceView = topVC.view
+            pop.sourceRect = CGRect(x: topVC.view.bounds.midX, y: topVC.view.bounds.maxY - 40, width: 1, height: 1)
+            pop.permittedArrowDirections = []
         }
 
         topVC.present(activityVC, animated: true)
@@ -338,11 +453,12 @@ struct CreateCapsuleView: View {
             isSent: true
         )
         modelContext.insert(capsule)
-        NotificationManager.scheduleCapsuleNotification(
-            id: capsule.id.uuidString,
-            title: title,
-            unlockDate: unlockDate
-        )
+
+        // Intentionally NO local notification for sent capsules — the recipient's
+        // own copy will notify them at unlock time. Notifying the sender that
+        // "the wait is over" is misleading: they can't open it from the sent
+        // section anyway.
+
         dismiss()
     }
 
@@ -350,5 +466,89 @@ struct CreateCapsuleView: View {
         if audioManager.isRecording { audioManager.stopRecording() }
         if audioManager.isPlaying { audioManager.stopPlayback() }
         if let audioFile = audioFileName { audioManager.deleteAudioFile(named: audioFile) }
+    }
+}
+
+// MARK: - iMessage composer plumbing
+
+/// MFMessageComposeViewController demands a delegate; SwiftUI views can't be one
+/// directly. This NSObject coordinator bridges back to a closure on completion,
+/// and cleans up the CloudKit record if the user cancels (so we don't leave
+/// orphan ciphertext on Apple's servers).
+final class MessagesComposerCoordinator: NSObject, MFMessageComposeViewControllerDelegate {
+    var cloudKitRecordID: String?
+    private let onCompleted: (Bool) -> Void
+
+    init(cloudKitRecordID: String?, onCompleted: @escaping (Bool) -> Void) {
+        self.cloudKitRecordID = cloudKitRecordID
+        self.onCompleted = onCompleted
+    }
+
+    func messageComposeViewController(_ controller: MFMessageComposeViewController,
+                                      didFinishWith result: MessageComposeResult) {
+        let sent = (result == .sent)
+
+        // If the user didn't actually send, drop the staged ciphertext.
+        if !sent, let recordID = cloudKitRecordID {
+            Task { await CapsuleTransport.delete(recordID: recordID) }
+        }
+
+        controller.dismiss(animated: true) {
+            self.onCompleted(sent)
+            ConfirmRoutingHolder.shared.release(self)
+        }
+    }
+}
+
+/// Tiny lifetime holder for transient delegate objects so they survive across
+/// the modal presentation without leaking. Released in the completion callback.
+final class ConfirmRoutingHolder {
+    static let shared = ConfirmRoutingHolder()
+    private var live: [ObjectIdentifier: AnyObject] = [:]
+
+    func retain(_ object: AnyObject) {
+        live[ObjectIdentifier(object)] = object
+    }
+
+    func release(_ object: AnyObject) {
+        live.removeValue(forKey: ObjectIdentifier(object))
+    }
+}
+
+/// Full-screen dim + spinner shown while we encrypt+upload a media capsule
+/// before opening the iMessage composer. Blocks taps so the user can't double-fire.
+private struct PreparingSendOverlay: View {
+    @State private var pulsing = false
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.4).ignoresSafeArea()
+
+            VStack(spacing: 18) {
+                ZStack {
+                    Circle()
+                        .stroke(Color.white.opacity(pulsing ? 0 : 0.3), lineWidth: 1)
+                        .frame(width: 64, height: 64)
+                        .scaleEffect(pulsing ? 1.4 : 1.0)
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .tint(.white)
+                }
+                Text("preparing your capsule...")
+                    .font(.caption)
+                    .tracking(Design.trackingWide)
+                    .foregroundStyle(.white.opacity(0.8))
+            }
+            .onAppear {
+                withAnimation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true)) {
+                    pulsing = true
+                }
+            }
+        }
+        .contentShape(.rect)
+        .onTapGesture { /* swallow taps */ }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("preparing your capsule")
+        .accessibilityAddTraits(.updatesFrequently)
     }
 }

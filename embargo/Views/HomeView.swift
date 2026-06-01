@@ -18,7 +18,29 @@ struct HomeView: View {
     @State private var rowTapTrigger = false
     @State private var showAllSent = false
     @State private var appeared = false
+    @State private var showQuickCapture = false
+    @State private var quickCaptureTrigger = false
+    @State private var letterPaywall: PaywallReason?
+    @State private var letterBreathing = false
+    @State private var letterPressed = false
+    /// Initial `true` means the shockwave overlay starts at its "expanded +
+    /// invisible" state, so it's hidden by default. A tap snaps it to `false`
+    /// (visible at pill size) then animates it back to `true`.
+    @State private var letterShockExpanded = true
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("pendingFirstCapsule") private var pendingFirstCapsule = false
+
+    /// Count of active sealed text capsules the user has created locally —
+    /// the free-tier limit is 3. Mirrored from `CreateCapsuleView`'s logic
+    /// because the "letter to tomorrow" path bypasses the normal type-select
+    /// gate, so we need to enforce the same limit here.
+    private var activeSealedTextCount: Int {
+        allCapsules.filter { $0.isLocal && $0.isSealed && $0.type == .text }.count
+    }
+
+    private var canCreateLetter: Bool {
+        storeManager.isPro || activeSealedTextCount < 3
+    }
 
     // MARK: - Filtered sections (active capsules only)
 
@@ -54,6 +76,9 @@ struct HomeView: View {
     var body: some View {
         NavigationStack(path: $navigationPath) {
             VStack(spacing: 0) {
+                // Leading space compensates for the trailing kerning whitespace
+                // that `.kerning(Design.trackingWide)` adds after every letter,
+                // so the wide-tracked title sits visually centered. Don't remove.
                 Text(storeManager.isPro ? " lacuna +" : " lacuna")
                     .font(.title3.weight(.medium))
                     .kerning(Design.trackingWide)
@@ -67,6 +92,10 @@ struct HomeView: View {
                     } else {
                         EmptyStateView(onIconTap: { showCreateSheet = true })
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            // Cross-fade with the list when the user opens their
+                            // last sealed capsule — the empty state should
+                            // ease in, not pop in.
+                            .transition(.opacity)
                     }
                 } else {
                     TimelineView(.periodic(from: .now, by: 1)) { context in
@@ -122,20 +151,36 @@ struct HomeView: View {
                     }
                     .listStyle(.plain)
                     .scrollContentBackground(.hidden)
-                    .contentMargins(.bottom, 100, for: .scrollContent)
+                    // Bottom margin large enough that the last capsule row,
+                    // when the user fully scrolls down, rests JUST above the
+                    // "letter to tomorrow" pill (pill top sits ~131pt above
+                    // safe-area bottom). 150pt gives a touch of breathing
+                    // room above the pill — no overlap.
+                    .contentMargins(.bottom, 150, for: .scrollContent)
                     .mask(
                         VStack(spacing: 0) {
                             Color.black
+                            // Fade gradient widened to 150pt so any row that
+                            // scrolls behind the pill during mid-scroll is
+                            // already well-faded by the time it gets there.
                             LinearGradient(
                                 colors: [.black, .clear],
                                 startPoint: .top,
                                 endPoint: .bottom
                             )
-                            .frame(height: 125)
+                            .frame(height: 150)
                         }
                     )
+                    // Matches the EmptyStateView transition so the swap is a
+                    // smooth fade rather than an instant pop when the user's
+                    // capsule set collapses to zero (or grows from zero).
+                    .transition(.opacity)
                 }
             }
+            // Scoped to `hasActiveCapsules` so the cross-fade only fires when
+            // the list↔empty-state branch swaps. Other state changes inside
+            // this view tree don't inherit this animation.
+            .animation(.easeInOut(duration: 0.45), value: hasActiveCapsules)
             .background(Design.bg.ignoresSafeArea())
             .onAppear {
                 appeared = true
@@ -154,54 +199,64 @@ struct HomeView: View {
             }
             .sensoryFeedback(.impact(weight: .light), trigger: rowTapTrigger)
             .overlay(alignment: .bottom) {
-                HStack(alignment: .bottom, spacing: 16) {
-                    Spacer()
+                VStack(spacing: 12) {
+                    // "✦ a letter to tomorrow" — quiet daily-ritual entry point.
+                    // Breathes like the existing whispers, but tappable. Routes
+                    // to QuickCaptureView, or to the paywall when the free-tier
+                    // text-capsule limit is hit (subtle lock badge then signals
+                    // the gate before the tap).
+                    letterToTomorrowWhisper
 
-                    Button {
-                        settingsTrigger.toggle()
-                        showSettings = true
-                    } label: {
-                        Image(systemName: "gearshape")
-                            .font(.body.weight(.medium))
-                            .foregroundStyle(Design.bg)
-                            .frame(width: 44, height: 44)
-                            .background(Design.fg)
-                            .clipShape(.circle)
-                    }
-                    .buttonStyle(.plain)
-                    .sensoryFeedback(.impact(weight: .light), trigger: settingsTrigger)
+                    // Existing toolbar — settings, archive, create
+                    HStack(alignment: .bottom, spacing: 16) {
+                        Spacer()
 
-                    Button {
-                        archiveTrigger.toggle()
-                        showArchive = true
-                    } label: {
-                        Image(systemName: "clock.arrow.circlepath")
-                            .font(.body.weight(.medium))
-                            .foregroundStyle(Design.bg)
-                            .frame(width: 44, height: 44)
-                            .background(Design.fg)
-                            .clipShape(.circle)
-                    }
-                    .buttonStyle(.plain)
-                    .sensoryFeedback(.impact(weight: .light), trigger: archiveTrigger)
+                        Button {
+                            settingsTrigger.toggle()
+                            showSettings = true
+                        } label: {
+                            Image(systemName: "gearshape")
+                                .font(.body.weight(.medium))
+                                .foregroundStyle(Design.bg)
+                                .frame(width: 44, height: 44)
+                                .background(Design.fg)
+                                .clipShape(.circle)
+                        }
+                        .buttonStyle(.plain)
+                        .sensoryFeedback(.impact(weight: .light), trigger: settingsTrigger)
 
-                    Button {
-                        createTrigger.toggle()
-                        showCreateSheet = true
-                    } label: {
-                        Image(systemName: "plus")
-                            .font(.title3.weight(.medium))
-                            .foregroundStyle(Design.bg)
-                            .frame(width: 52, height: 52)
-                            .background(Design.fg)
-                            .clipShape(.circle)
-                            .overlay {
-                                AddButtonPulse()
-                            }
+                        Button {
+                            archiveTrigger.toggle()
+                            showArchive = true
+                        } label: {
+                            Image(systemName: "clock.arrow.circlepath")
+                                .font(.body.weight(.medium))
+                                .foregroundStyle(Design.bg)
+                                .frame(width: 44, height: 44)
+                                .background(Design.fg)
+                                .clipShape(.circle)
+                        }
+                        .buttonStyle(.plain)
+                        .sensoryFeedback(.impact(weight: .light), trigger: archiveTrigger)
+
+                        Button {
+                            createTrigger.toggle()
+                            showCreateSheet = true
+                        } label: {
+                            Image(systemName: "plus")
+                                .font(.title3.weight(.medium))
+                                .foregroundStyle(Design.bg)
+                                .frame(width: 52, height: 52)
+                                .background(Design.fg)
+                                .clipShape(.circle)
+                                .overlay {
+                                    AddButtonPulse()
+                                }
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
+                    .padding(.trailing, 24)
                 }
-                .padding(.trailing, 24)
                 .padding(.bottom, 32)
                 .sensoryFeedback(.impact(weight: .medium), trigger: createTrigger)
             }
@@ -220,6 +275,16 @@ struct HomeView: View {
             .sheet(isPresented: $showArchive) {
                 ArchiveView()
                     .environment(notificationManager)
+                    .preferredColorScheme(AppearanceResolver.resolve(rawValue: appearanceMode))
+            }
+            .sheet(isPresented: $showQuickCapture) {
+                QuickCaptureView()
+                    .environment(notificationManager)
+                    .environment(storeManager)
+                    .preferredColorScheme(AppearanceResolver.resolve(rawValue: appearanceMode))
+            }
+            .sheet(item: $letterPaywall) { reason in
+                PaywallView(storeManager: storeManager, reason: reason)
                     .preferredColorScheme(AppearanceResolver.resolve(rawValue: appearanceMode))
             }
             .confirmationDialog(
@@ -262,8 +327,10 @@ struct HomeView: View {
 
                 navigationPath = NavigationPath()
 
+                // Sheets dismiss in ~350ms; 450ms gives a touch of breathing
+                // room without making the user wait perceptibly.
                 Task { @MainActor in
-                    try? await Task.sleep(for: .milliseconds(800))
+                    try? await Task.sleep(for: .milliseconds(450))
                     navigationPath.append(capsule)
                     notificationManager.pendingCapsuleID = nil
                 }
@@ -274,6 +341,98 @@ struct HomeView: View {
                     try? await Task.sleep(for: .milliseconds(600))
                     showCreateSheet = true
                 }
+            }
+        }
+    }
+
+    // MARK: - "✦ a letter to tomorrow" pill
+
+    @ViewBuilder
+    private var letterToTomorrowWhisper: some View {
+        Button {
+            quickCaptureTrigger.toggle()  // fires haptic + shockwave
+            // Press squeeze: 120ms in → completion → 180ms back. The sheet
+            // (or paywall) opens on the completion edge so the user sees the
+            // visual response land before the next surface rises.
+            withAnimation(.easeInOut(duration: 0.12)) {
+                letterPressed = true
+            } completion: {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    letterPressed = false
+                }
+                if canCreateLetter {
+                    showQuickCapture = true
+                } else {
+                    // Same paywall reason as the type-select "text limit" gate
+                    // so the user sees consistent messaging across both paths.
+                    letterPaywall = .textLimit
+                }
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Text("✦ a letter to tomorrow")
+                    .font(.caption)
+                    .tracking(Design.trackingWide)
+                    .foregroundStyle(.primary.opacity(letterBreathing ? 0.55 : 0.85))
+                    // Pin to a single line at natural width — animating opacity
+                    // on a wrapped, tracked Text causes the wrap point to
+                    // micro-shift each frame, making the trailing line wobble.
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+
+                if !canCreateLetter {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.primary.opacity(letterBreathing ? 0.45 : 0.70))
+                        .accessibilityHidden(true)
+                }
+            }
+            .padding(.vertical, 10)
+            .padding(.horizontal, 18)
+            // Angular outline — same geometric language as Design.radius* (0).
+            // The breathing border is the resting affordance: a pure whisper
+            // reads as ambient text, an outlined pill reads as a control.
+            .overlay {
+                Rectangle()
+                    .strokeBorder(
+                        Color.primary.opacity(letterBreathing ? 0.18 : 0.35),
+                        lineWidth: 1
+                    )
+            }
+            // Tap shockwave — a second rectangle that snaps to the pill's exact
+            // bounds at tap moment, then expands outward (1.4×) and fades.
+            // Like dropping a stone into still water, but rectangular to match
+            // the pill's geometry.
+            .overlay {
+                Rectangle()
+                    .stroke(Color.primary.opacity(0.55), lineWidth: 1.5)
+                    .scaleEffect(letterShockExpanded ? 1.4 : 1.0)
+                    .opacity(letterShockExpanded ? 0 : 1)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+                    .onChange(of: quickCaptureTrigger) {
+                        guard !reduceMotion else { return }
+                        // Snap to "ready to animate" instantly, without
+                        // animation — otherwise the reset would itself animate
+                        // and we'd see the rectangle flying inward first.
+                        var t = Transaction()
+                        t.disablesAnimations = true
+                        withTransaction(t) { letterShockExpanded = false }
+                        withAnimation(.easeOut(duration: 0.55)) {
+                            letterShockExpanded = true
+                        }
+                    }
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .scaleEffect(letterPressed ? 0.96 : 1.0)
+        .sensoryFeedback(.impact(weight: .medium), trigger: quickCaptureTrigger)
+        .accessibilityLabel(canCreateLetter ? "a letter to tomorrow" : "a letter to tomorrow (requires lacuna +)")
+        .accessibilityHint("seal a thought that opens tomorrow")
+        .onAppear {
+            withAnimation(.easeInOut(duration: 2.4).repeatForever(autoreverses: true)) {
+                letterBreathing = true
             }
         }
     }
